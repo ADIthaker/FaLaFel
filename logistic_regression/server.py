@@ -79,6 +79,10 @@ class FederatedServerLogReg():
         }
         ser_msg = pickle.dumps(msg)
         active_clients = [cl for idx, cl in enumerate(self.client_IPs) if self.end[idx] == 0]
+        self.active_clients = len(active_clients)
+        print(active_clients)
+        if self.active_clients == 0:
+            return
         for cl in active_clients:
             self.sock.sendto(ser_msg, cl)
         await self._recv_gradients()
@@ -94,7 +98,7 @@ class FederatedServerLogReg():
             ser_msg, _ = packet
             msg = pickle.loads(ser_msg)
             if msg["type"] == "gradient":
-                print("GOT GRADIENT FROM", msg["id"], msg['gradient'])
+                print("GOT GRADIENT FROM", msg["id"])
                 if msg["trust"] == "trust":
                     self.round_updates[self.rounds].append(msg["gradient"])
                 else:
@@ -103,10 +107,17 @@ class FederatedServerLogReg():
                 print("GOT END FROM", msg["id"])
                 self.end[msg['id']-1] = 1
                 self.active_clients = self.n - sum(self.end)
+                #print("NOW ACTIVE CLIENTS", self.active_clients)
+            end_sent = True
+            for i in self.end:
+                if i == 0:
+                    end_sent = False
         if self.active_clients > 0:
             await self.fit()
-        
-        return self.rounds
+            return self.rounds
+        else:
+            #print("IM HERE AFTER NO ACTIVE PEOPLE")
+            return self.rounds
 
     async def fit(self):
 
@@ -129,9 +140,9 @@ class FederatedServerLogReg():
 
             if isinstance(error_w, int):
                 print("NO UPDATES RECVD")
-                self.rounds += 1
-                print("Start a new round", self.rounds)
-                await self.round()
+                #self.rounds += 1
+                #print("Start a new round", self.rounds)
+                #await self.round()
                 return
             
             no_updates = 0
@@ -143,7 +154,7 @@ class FederatedServerLogReg():
 
             error_w = error_w / no_updates
             error_b = error_b / no_updates
-
+            print(f"IN THIS ROUND: \n\n\n No of updates: {no_updates} \n\n Gradient: {error_w} \n Bias: {error_b}")
             self.update_model_parameters(error_w, error_b)
 
             pred_to_class = [1 if p > 0.5 else 0 for p in pred]
@@ -151,8 +162,8 @@ class FederatedServerLogReg():
             self.losses.append(loss)
             print(self.losses[-1], self.train_accuracies[-1])
             self.rounds += 1
-            print("Start a new round", self.rounds)
-            await self.round()
+            #print("Start a new round", self.rounds)
+            #await self.round()
 
     def compute_loss(self, y_true, y_pred):
         # binary cross entropy
@@ -201,7 +212,16 @@ if __name__ == "__main__":
     lr = FederatedServerLogReg(("localhost", 8000), client_IPs, 0.01, 150)
     asyncio.run(lr._recv_start())
     print("GOT ALL START MESSAGES")
-    asyncio.run(lr.round())
+    end_sent = True
+    for i in lr.end:
+        if i == 0:
+            end_sent = False
+    while not end_sent:
+        asyncio.run(lr.round())
+        end_sent = True
+        for i in lr.end:
+            if i == 0:
+                end_sent = False
     pred = lr.predict(x_test)
     accuracy = accuracy_score(y_test, pred)
     print(accuracy)

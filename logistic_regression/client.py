@@ -161,7 +161,7 @@ if __name__ == "__main__":
 
     lr = FederatedClientLogReg(('localhost', 8000+id), ('localhost', 8000), id)
     print("Starting Fit")
-    lr.fit(x_train, y_train, epochs=20)
+    lr.fit(x_train, y_train, epochs=100)
 
 # lr.fit(x_train, y_train, epochs=150)
 # pred = lr.predict(x_test)
