@@ -90,15 +90,18 @@ class FederatedClientLogReg():
                 }
                 ser_msg = pickle.dumps(msg)
                 self.start_sent = True
+                print("SENDING START TO SERVER")
                 self.sock.sendto(ser_msg, self.server_addr)
                 
             if self.start_sent:
+                print("Waiting for a request from server and sending my reply")
                 self.round_send()
-                
+
         msg =  {
                     "type": "end",
                     "id": self.id
                 }
+        print("Sending END TO SERVER")
         ser_msg = pickle.dumps(msg)
         self.sock.sendto(ser_msg, self.server_addr)
         

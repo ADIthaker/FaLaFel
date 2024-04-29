@@ -40,11 +40,12 @@ class FederatedServerLogReg():
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.bind((self.IP, self.PORT))
         self.rounds = 0
+        self.active_clients = self.n
         self.curr_loss = 100
         self.latest_epoch = 0
         self.round_updates = defaultdict(list)
         self.start = [-1  for i in range(self.n)]
-        self.end = [-1  for i in range(self.n)]
+        self.end = [0 for i in range(self.n)]
         self.x = self._transform_x(x)
         self.y = self._transform_y(y)
         self.weights = np.zeros(self.x.shape[1])
@@ -77,26 +78,33 @@ class FederatedServerLogReg():
             "round": self.rounds,
         }
         ser_msg = pickle.dumps(msg)
-        for cl in self.client_IPs:
+        active_clients = [cl for idx, cl in enumerate(self.client_IPs) if self.end[idx] == 0]
+        for cl in active_clients:
             self.sock.sendto(ser_msg, cl)
         await self._recv_gradients()
 
     async def _recv_gradients(self):
-        while len(self.round_updates[self.rounds]) < self.n:
+        end_sent = True
+        for i in self.end:
+            if i == 0:
+                end_sent = False
+        while len(self.round_updates[self.rounds]) < self.active_clients and not end_sent:
             print("GETTING MESSAGES ...")
             packet = self.sock.recvfrom(10000)
             ser_msg, _ = packet
             msg = pickle.loads(ser_msg)
-            print("GOT ONE FROM", msg["id"])
             if msg["type"] == "gradient":
-                print("GRADIENT", msg['gradient'])
+                print("GOT GRADIENT FROM", msg["id"], msg['gradient'])
                 if msg["trust"] == "trust":
                     self.round_updates[self.rounds].append(msg["gradient"])
                 else:
                     self.round_updates[self.rounds].append((0,0))
             elif msg["type"] == "end":
+                print("GOT END FROM", msg["id"])
                 self.end[msg['id']-1] = 1
-        await self.fit()
+                self.active_clients = self.n - sum(self.end)
+        if self.active_clients > 0:
+            await self.fit()
         
         return self.rounds
 
