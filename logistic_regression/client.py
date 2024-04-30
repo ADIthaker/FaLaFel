@@ -7,6 +7,7 @@ import socket
 import sys
 import pickle
 import time
+import hashlib
 import numpy as np
 
 def sklearn_to_df(data_loader):
@@ -19,6 +20,17 @@ def sklearn_to_df(data_loader):
 
     return x, y
 
+def hash_file(file_name):
+    BUF_SIZE = 65536
+    sha1 = hashlib.sha1()
+    with open(file_name, 'rb') as f:
+        print("Calculating Hash")
+        while True:
+            data = f.read(BUF_SIZE)
+            if not data:
+                break
+            sha1.update(data)
+    return sha1.hexdigest()
 
 class FederatedClientLogReg():
 
@@ -38,6 +50,8 @@ class FederatedClientLogReg():
         self.latest_epoch = 0
         self.start_sent = False
         self.end_training = False
+    
+    
 
     def round_send(self):
         while True:
@@ -45,13 +59,14 @@ class FederatedClientLogReg():
             ser_msg, _ = packet
             msg = pickle.loads(ser_msg)
             print("in round_send, got a messsage")
+            trust = hash_file(__file__)
             if msg["type"] == "gradient_request":
                 #send my reply
                 reply = {
                     "type": "gradient",
                     "gradient": self.latest_gradient,
                     "id": self.id,
-                    "trust": "trust",
+                    "trust": trust,
                 }
                 ser_reply = pickle.dumps(reply)
                 self.sock.sendto(ser_reply, self.server_addr)
@@ -60,7 +75,6 @@ class FederatedClientLogReg():
             elif msg["type"]=="end":
                 self.end_training = True
                 break
-
 
     def fit(self, x, y, epochs):
         x = self._transform_x(x)
