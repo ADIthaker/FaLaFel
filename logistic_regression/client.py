@@ -37,6 +37,7 @@ class FederatedClientLogReg():
         self.latest_gradient = []
         self.latest_epoch = 0
         self.start_sent = False
+        self.end_training = False
 
     def round_send(self):
         while True:
@@ -56,6 +57,9 @@ class FederatedClientLogReg():
                 self.sock.sendto(ser_reply, self.server_addr)
                 self.round_to_epoch[msg["round"]] = self.latest_epoch
                 break
+            elif msg["type"]=="end":
+                self.end_training = True
+                break
 
 
     def fit(self, x, y, epochs):
@@ -64,8 +68,8 @@ class FederatedClientLogReg():
 
         self.weights = np.zeros(x.shape[1])
         self.bias = 0
-
-        for i in range(epochs):
+        i = 0
+        while not self.end_training:
             time.sleep(1) # collecting data
             print("Starting New Epoch", i)
 
@@ -96,14 +100,15 @@ class FederatedClientLogReg():
             if self.start_sent:
                 print("Waiting for a request from server and sending my reply")
                 self.round_send()
-
+            i+=1
         msg =  {
                     "type": "end",
                     "id": self.id
                 }
-        print("Sending END TO SERVER")
-        ser_msg = pickle.dumps(msg)
-        self.sock.sendto(ser_msg, self.server_addr)
+        # print("Sending END TO SERVER")
+        # ser_msg = pickle.dumps(msg)
+        # self.sock.sendto(ser_msg, self.server_addr)
+        # self.sock.recvfrom(10000)
         
     def compute_loss(self, y_true, y_pred):
         # binary cross entropy
@@ -161,7 +166,7 @@ if __name__ == "__main__":
 
     lr = FederatedClientLogReg(('localhost', 8000+id), ('localhost', 8000), id)
     print("Starting Fit")
-    lr.fit(x_train, y_train, epochs=100)
+    lr.fit(x_train, y_train, epochs=20)
 
 # lr.fit(x_train, y_train, epochs=150)
 # pred = lr.predict(x_test)

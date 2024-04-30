@@ -9,6 +9,8 @@ import socket
 import pickle
 import asyncio
 import time
+import warnings
+warnings.filterwarnings("ignore")
 
 def sklearn_to_df(data_loader):
     X_data = data_loader.data
@@ -40,12 +42,11 @@ class FederatedServerLogReg():
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.bind((self.IP, self.PORT))
         self.rounds = 0
-        self.active_clients = self.n
         self.curr_loss = 100
         self.latest_epoch = 0
         self.round_updates = defaultdict(list)
         self.start = [-1  for i in range(self.n)]
-        self.end = [0 for i in range(self.n)]
+        self.end = [-1  for i in range(self.n)]
         self.x = self._transform_x(x)
         self.y = self._transform_y(y)
         self.weights = np.zeros(self.x.shape[1])
@@ -78,56 +79,40 @@ class FederatedServerLogReg():
             "round": self.rounds,
         }
         ser_msg = pickle.dumps(msg)
-        active_clients = [cl for idx, cl in enumerate(self.client_IPs) if self.end[idx] == 0]
-        self.active_clients = len(active_clients)
-        print(active_clients)
-        if self.active_clients == 0:
-            return
-        for cl in active_clients:
+        for cl in self.client_IPs:
             self.sock.sendto(ser_msg, cl)
         await self._recv_gradients()
 
     async def _recv_gradients(self):
-        end_sent = True
-        for i in self.end:
-            if i == 0:
-                end_sent = False
-        while len(self.round_updates[self.rounds]) < self.active_clients and not end_sent:
-            print("GETTING MESSAGES ...")
+        while len(self.round_updates[self.rounds]) < self.n:
+            # print("GETTING MESSAGES ...")
             packet = self.sock.recvfrom(10000)
             ser_msg, _ = packet
             msg = pickle.loads(ser_msg)
+            print("GOT ONE FROM", msg["id"])
             if msg["type"] == "gradient":
-                print("GOT GRADIENT FROM", msg["id"])
+                # print("GRADIENT", msg['gradient'])
                 if msg["trust"] == "trust":
                     self.round_updates[self.rounds].append(msg["gradient"])
                 else:
                     self.round_updates[self.rounds].append((0,0))
             elif msg["type"] == "end":
-                print("GOT END FROM", msg["id"])
                 self.end[msg['id']-1] = 1
-                self.active_clients = self.n - sum(self.end)
-                #print("NOW ACTIVE CLIENTS", self.active_clients)
-            end_sent = True
-            for i in self.end:
-                if i == 0:
-                    end_sent = False
-        if self.active_clients > 0:
-            await self.fit()
-            return self.rounds
-        else:
-            #print("IM HERE AFTER NO ACTIVE PEOPLE")
-            return self.rounds
+        print("Gathered all gradients with len: ", len(self.round_updates[self.rounds]),self.round_updates[self.rounds])
+        await self.fit()
+        
+        return self.rounds
 
     async def fit(self):
 
-        while self.latest_epoch < self.max_epochs or self.min_loss < self.curr_loss: #make these epochs count into condition for reaching a min loss value
+        while self.latest_epoch < self.max_epochs: #make these epochs count into condition for reaching a min loss value
             time.sleep(0.5) # sleep for 0.5seconds before asking for updates
             x_dot_weights = np.matmul(self.weights, self.x.transpose()) + self.bias
             pred = self._sigmoid(x_dot_weights)
             loss = self.compute_loss(y, pred)
             self.curr_loss = loss
             self.latest_epoch += 1
+            print("Epoch comparison: ", self.latest_epoch, self.max_epochs)
             # error_w, error_b = self.compute_gradients(x, y, pred)
 
             #take average of all gradients recieved.
@@ -140,9 +125,9 @@ class FederatedServerLogReg():
 
             if isinstance(error_w, int):
                 print("NO UPDATES RECVD")
-                #self.rounds += 1
-                #print("Start a new round", self.rounds)
-                #await self.round()
+                self.rounds += 1
+                print("Start a new round", self.rounds)
+                await self.round()
                 return
             
             no_updates = 0
@@ -154,7 +139,8 @@ class FederatedServerLogReg():
 
             error_w = error_w / no_updates
             error_b = error_b / no_updates
-            print(f"IN THIS ROUND: \n\n\n No of updates: {no_updates} \n\n Gradient: {error_w} \n Bias: {error_b}")
+            print("Average Gradient: ", error_w)
+
             self.update_model_parameters(error_w, error_b)
 
             pred_to_class = [1 if p > 0.5 else 0 for p in pred]
@@ -162,8 +148,16 @@ class FederatedServerLogReg():
             self.losses.append(loss)
             print(self.losses[-1], self.train_accuracies[-1])
             self.rounds += 1
-            #print("Start a new round", self.rounds)
-            #await self.round()
+            print("Start a new round", self.rounds)
+            await self.round()
+        print("Sending END TO CLIENTS")
+        end_msg =  {
+                    "type": "end",
+                }
+        for cl in self.client_IPs:
+            ser_msg = pickle.dumps(end_msg)
+            self.sock.sendto(ser_msg, cl)
+
 
     def compute_loss(self, y_true, y_pred):
         # binary cross entropy
@@ -185,6 +179,7 @@ class FederatedServerLogReg():
         self.bias = self.bias - 0.1 * error_b
 
     def predict(self, x):
+        print("Final weights: ", self.weights)
         x_dot_weights = np.matmul(x, self.weights.transpose()) + self.bias
         probabilities = self._sigmoid(x_dot_weights)
         return [1 if p > 0.5 else 0 for p in probabilities]
@@ -209,19 +204,15 @@ class FederatedServerLogReg():
         return y.values.reshape(y.shape[0], 1)
 
 if __name__ == "__main__":
-    lr = FederatedServerLogReg(("localhost", 8000), client_IPs, 0.01, 150)
+    lr = FederatedServerLogReg(("localhost", 8000), client_IPs, 0.01, 20)
     asyncio.run(lr._recv_start())
     print("GOT ALL START MESSAGES")
-    end_sent = True
-    for i in lr.end:
-        if i == 0:
-            end_sent = False
-    while not end_sent:
-        asyncio.run(lr.round())
-        end_sent = True
-        for i in lr.end:
-            if i == 0:
-                end_sent = False
+    asyncio.run(lr.round())
     pred = lr.predict(x_test)
     accuracy = accuracy_score(y_test, pred)
     print(accuracy)
+    with open(f"log_{time.time()}.txt", 'w') as f:
+        f.write(f"Training Accuracies = {lr.train_accuracies}\n")
+        f.write(f"Losses = {lr.losses}")
+
+
