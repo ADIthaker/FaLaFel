@@ -99,7 +99,7 @@ class FederatedClientLogReg():
         y = self._transform_y(y)
 
         self.weights = np.random.uniform(low=0, high=1, size=x.shape[1])
-        self.bias = 0
+        self.bias = 0.1
         i = 0
         # while not self.end_training:
         for i in range(100):
@@ -168,9 +168,9 @@ class FederatedClientLogReg():
 
         return gradients_w, gradient_b
 
-    def update_model_parameters(self, error_w, error_b, lr=0.0001):
-        self.weights = self.weights - lr * error_w
-        self.bias = self.bias - lr * error_b
+    def update_model_parameters(self, error_w, error_b, lr=0.01, beta=0.01):
+        self.weights = self.weights - lr * (error_w + 2*beta*self.weights) 
+        self.bias = self.bias - lr * (error_b + 2*beta*self.bias)
 
     def predict(self, x):
         x_dot_weights = np.matmul(x, self.weights.transpose()) + self.bias
@@ -205,8 +205,8 @@ if __name__ == "__main__":
     x = pd.DataFrame(x)
     y = pd.DataFrame(y)
     no_rows = len(x) // 5
-    #x = x.iloc[no_rows*(id-1):no_rows*id, :] #split dataset at client
-    #y = y.iloc[no_rows*(id-1):no_rows*id]
+    x = x.iloc[no_rows*(id-1):no_rows*id, :] #split dataset at client
+    y = y.iloc[no_rows*(id-1):no_rows*id]
     print(type(x))
     # normalize data
     scaler = STD()
@@ -214,7 +214,7 @@ if __name__ == "__main__":
     #x = x.values
     print(type(x))
     print("split dataset")
-    x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.1, random_state=42)
+    x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.3, random_state=42)
 
     lr = FederatedClientLogReg(('localhost', 8000+id), ('localhost', 8000), id)
     print("Starting Fit")
