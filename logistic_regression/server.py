@@ -25,7 +25,7 @@ def sklearn_to_df(data_loader):
 x, y = sklearn_to_df(load_breast_cancer())
 
 x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.2, random_state=42)
-
+print(f"sizes train = {len(y_train)} and test = {len(y_test)} ")
 client_IPs = [('localhost', 8001), ('localhost', 8002), ('localhost', 8003), ('localhost', 8004), ('localhost', 8005)]
 
 class FederatedServerLogReg():
@@ -77,6 +77,7 @@ class FederatedServerLogReg():
         msg = {
             "type": "gradient_request",
             "round": self.rounds,
+            "global_weights": self.weights if self.rounds>0 else None
         }
         ser_msg = pickle.dumps(msg)
         for cl in self.client_IPs:
@@ -98,21 +99,22 @@ class FederatedServerLogReg():
                     self.round_updates[self.rounds].append((0,0))
             elif msg["type"] == "end":
                 self.end[msg['id']-1] = 1
-        print("Gathered all gradients with len: ", len(self.round_updates[self.rounds]),self.round_updates[self.rounds])
+        print("Gathered all gradients with len: ", len(self.round_updates[self.rounds]))
         await self.fit()
         
         return self.rounds
-
+    async def send_global_updates(self):
+        msg = {
+            "type": "global_update",
+            "global_weights": self.weights
+        }
+        ser_msg = pickle.dumps(msg)
+        for cl in self.client_IPs:
+            self.sock.sendto(ser_msg, cl)
     async def fit(self):
 
         while self.latest_epoch < self.max_epochs: #make these epochs count into condition for reaching a min loss value
             time.sleep(0.5) # sleep for 0.5seconds before asking for updates
-            x_dot_weights = np.matmul(self.weights, self.x.transpose()) + self.bias
-            pred = self._sigmoid(x_dot_weights)
-            loss = self.compute_loss(y, pred)
-            self.curr_loss = loss
-            self.latest_epoch += 1
-            print("Epoch comparison: ", self.latest_epoch, self.max_epochs)
             # error_w, error_b = self.compute_gradients(x, y, pred)
 
             #take average of all gradients recieved.
@@ -143,10 +145,18 @@ class FederatedServerLogReg():
 
             self.update_model_parameters(error_w, error_b)
 
+            x_dot_weights = np.matmul(self.weights, self.x.transpose()) + self.bias
+            pred = self._sigmoid(x_dot_weights)
+            loss = self.compute_loss(y, pred)
+            self.curr_loss = loss
+            self.latest_epoch += 1
             pred_to_class = [1 if p > 0.5 else 0 for p in pred]
             self.train_accuracies.append(accuracy_score(self.y, pred_to_class))
             self.losses.append(loss)
+
+            await self.send_global_updates()
             print(self.losses[-1], self.train_accuracies[-1])
+            print(self.weights)
             self.rounds += 1
             print("Start a new round", self.rounds)
             await self.round()

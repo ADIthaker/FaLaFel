@@ -2,6 +2,7 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 from sklearn.datasets import load_breast_cancer
 from sklearn.metrics import accuracy_score
+from sklearn.preprocessing import StandardScaler as STD
 import copy
 import socket
 import sys
@@ -61,6 +62,20 @@ class FederatedClientLogReg():
                 self.end_training = True
                 break
 
+    def round_global_weights(self):
+        while True:
+            packet = self.sock.recvfrom(10000)
+            ser_msg, _ = packet
+            msg = pickle.loads(ser_msg)
+            print("received global updates")
+            if msg["type"] == "global_update":
+                self.weights = msg["global_weights"]
+                break
+            elif msg["type"]=="end":
+                self.end_training = True
+                break
+
+
 
     def fit(self, x, y, epochs):
         x = self._transform_x(x)
@@ -76,6 +91,7 @@ class FederatedClientLogReg():
             x_dot_weights = np.matmul(self.weights, x.transpose()) + self.bias
             pred = self._sigmoid(x_dot_weights)
             loss = self.compute_loss(y, pred)
+            print("local loss = ", loss)
             error_w, error_b = self.compute_gradients(x, y, pred)
             self.latest_gradient = (error_w, error_b)
             self.epoch_gradient[i] = self.latest_gradient
@@ -100,6 +116,7 @@ class FederatedClientLogReg():
             if self.start_sent:
                 print("Waiting for a request from server and sending my reply")
                 self.round_send()
+                self.round_global_weights()
             i+=1
         msg =  {
                     "type": "end",
@@ -161,6 +178,11 @@ if __name__ == "__main__":
     no_rows = len(x) // 5
     x = x.iloc[no_rows*(id-1):no_rows*id, :] #split dataset at client
     y = y.iloc[no_rows*(id-1):no_rows*id]
+
+    # normalize data
+    scaler = STD()
+    x = scaler.fit_transform(x) 
+
     print("split dataset")
     x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.1, random_state=42)
 
