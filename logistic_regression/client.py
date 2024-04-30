@@ -10,6 +10,7 @@ import pickle
 import time
 import hashlib
 import numpy as np
+from matplotlib import pyplot as plt
 
 def sklearn_to_df(data_loader):
     X_data = data_loader.data
@@ -96,7 +97,7 @@ class FederatedClientLogReg():
         x = self._transform_x(x)
         y = self._transform_y(y)
 
-        self.weights = np.zeros(x.shape[1])
+        self.weights = np.random.rand(x.shape[1])
         self.bias = 0
         i = 0
         # while not self.end_training:
@@ -142,6 +143,9 @@ class FederatedClientLogReg():
         # ser_msg = pickle.dumps(msg)
         # self.sock.sendto(ser_msg, self.server_addr)
         # self.sock.recvfrom(10000)
+        plt.plot(self.losses)
+        plt.plot(np.multiply(self.train_accuracies,10))
+        plt.show()
         print(accuracy_score(y, pred_to_class))
         
     def compute_loss(self, y_true, y_pred):
@@ -159,9 +163,9 @@ class FederatedClientLogReg():
 
         return gradients_w, gradient_b
 
-    def update_model_parameters(self, error_w, error_b):
-        self.weights = self.weights - 0.1 * error_w
-        self.bias = self.bias - 0.1 * error_b
+    def update_model_parameters(self, error_w, error_b, lr=0.001):
+        self.weights = self.weights - lr * error_w
+        self.bias = self.bias - lr * error_b
 
     def predict(self, x):
         x_dot_weights = np.matmul(x, self.weights.transpose()) + self.bias
@@ -200,7 +204,6 @@ if __name__ == "__main__":
     scaler = STD()
     # x = scaler.fit_transform(x) 
     x = x.values
-    print(type(x))
     print("split dataset")
     x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.1, random_state=42)
 
