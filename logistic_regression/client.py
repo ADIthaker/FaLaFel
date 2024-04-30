@@ -162,7 +162,7 @@ class FederatedClientLogReg():
 
         return gradients_w, gradient_b
 
-    def update_model_parameters(self, error_w, error_b, lr=0.0002):
+    def update_model_parameters(self, error_w, error_b, lr=0.0001):
         self.weights = self.weights - lr * error_w
         self.bias = self.bias - lr * error_b
 
@@ -199,8 +199,8 @@ if __name__ == "__main__":
     x = pd.DataFrame(x)
     y = pd.DataFrame(y)
     no_rows = len(x) // 5
-    x = x.iloc[no_rows*(id-1):no_rows*id, :] #split dataset at client
-    y = y.iloc[no_rows*(id-1):no_rows*id]
+    #x = x.iloc[no_rows*(id-1):no_rows*id, :] #split dataset at client
+    #y = y.iloc[no_rows*(id-1):no_rows*id]
     print(type(x))
     # normalize data
     scaler = STD()
