@@ -41,7 +41,8 @@ def hash_file(file_name):
             sha1.update(data)
     return sha1.hexdigest()
 
-
+good_updates =[]
+bad_updates=[]
 class FederatedServerLogReg():
 
     def __init__(self, addr, client_IPs, min_loss, epochs, client_file):
@@ -167,9 +168,14 @@ class FederatedServerLogReg():
             self.curr_loss = loss
             self.latest_epoch += 1
             pred_to_class = [1 if p > 0.5 else 0 for p in pred]
-            self.train_accuracies.append(accuracy_score(self.y, pred_to_class))
+            round_accuracy = accuracy_score(self.y, pred_to_class)
+            self.train_accuracies.append(round_accuracy)
             self.losses.append(loss)
 
+            if round_accuracy<0.4:
+                bad_updates.append((error_w, error_b))
+            elif round_accuracy>0.5:
+                good_updates.append((error_w, error_b))
             await self.send_global_updates()
             print(self.losses[-1], self.train_accuracies[-1])
             print(self.weights)
@@ -231,15 +237,20 @@ class FederatedServerLogReg():
 
 if __name__ == "__main__":
     print(hash_file("client.py"))
-    # lr = FederatedServerLogReg(("localhost", 8000), client_IPs, 0.01, 20)
-    # asyncio.run(lr._recv_start())
-    # print("GOT ALL START MESSAGES")
-    # asyncio.run(lr.round())
-    # pred = lr.predict(x_test)
-    # accuracy = accuracy_score(y_test, pred)
-    # print(accuracy)
-    # with open(f"log_{time.time()}.txt", 'w') as f:
-    #     f.write(f"Training Accuracies = {lr.train_accuracies}\n")
-    #     f.write(f"Losses = {lr.losses}")
+    lr = FederatedServerLogReg(("localhost", 8000), client_IPs, 0.01, 40, "client.py")
+    asyncio.run(lr._recv_start())
+    print("GOT ALL START MESSAGES")
+    start=time.time()
+    asyncio.run(lr.round())
+    print("time taken: ", time.time()-start)
+    pred = lr.predict(x_test)
+    accuracy = accuracy_score(y_test, pred)
+    print(accuracy)
+    with open(f"log_{time.time()}.txt", 'w') as f:
+        f.write(f"Training Accuracies = {lr.train_accuracies}\n")
+        f.write(f"Losses = {lr.losses}")
+    with open(f"updates_{time.time()}.txt", 'w') as f:
+        f.write(f"Good updates = {good_updates}\n")
+        f.write(f"Bad updates = {bad_updates}")
 
 
