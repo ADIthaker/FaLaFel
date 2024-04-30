@@ -8,6 +8,7 @@ import numpy as np
 import socket
 import pickle
 import asyncio
+import hashlib
 import time
 import warnings
 warnings.filterwarnings("ignore")
@@ -28,9 +29,23 @@ x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.2, random_
 print(f"sizes train = {len(y_train)} and test = {len(y_test)} ")
 client_IPs = [('localhost', 8001), ('localhost', 8002), ('localhost', 8003), ('localhost', 8004), ('localhost', 8005)]
 
+def hash_file(file_name):
+    BUF_SIZE = 65536
+    sha1 = hashlib.sha1()
+    with open(file_name, 'rb') as f:
+        print("Calculating Hash")
+        while True:
+            data = f.read(BUF_SIZE)
+            if not data:
+                break
+            sha1.update(data)
+    return sha1.hexdigest()
+
+
 class FederatedServerLogReg():
 
-    def __init__(self, addr, client_IPs, min_loss, epochs):
+    def __init__(self, addr, client_IPs, min_loss, epochs, client_file):
+        self.client_hash = hash_file(client_file)
         self.losses = []
         self.max_epochs = epochs
         self.min_loss = min_loss
@@ -93,9 +108,10 @@ class FederatedServerLogReg():
             print("GOT ONE FROM", msg["id"])
             if msg["type"] == "gradient":
                 # print("GRADIENT", msg['gradient'])
-                if msg["trust"] == "trust":
+                if msg["trust"] == self.client_hash:
                     self.round_updates[self.rounds].append(msg["gradient"])
                 else:
+                    print("HASH DID NOT MATCH, CANT TRUST CLIENT", msg['id'], "in round", self.rounds)
                     self.round_updates[self.rounds].append((0,0))
             elif msg["type"] == "end":
                 self.end[msg['id']-1] = 1
@@ -214,15 +230,16 @@ class FederatedServerLogReg():
         return y.values.reshape(y.shape[0], 1)
 
 if __name__ == "__main__":
-    lr = FederatedServerLogReg(("localhost", 8000), client_IPs, 0.01, 20)
-    asyncio.run(lr._recv_start())
-    print("GOT ALL START MESSAGES")
-    asyncio.run(lr.round())
-    pred = lr.predict(x_test)
-    accuracy = accuracy_score(y_test, pred)
-    print(accuracy)
-    with open(f"log_{time.time()}.txt", 'w') as f:
-        f.write(f"Training Accuracies = {lr.train_accuracies}\n")
-        f.write(f"Losses = {lr.losses}")
+    print(hash_file("client.py"))
+    # lr = FederatedServerLogReg(("localhost", 8000), client_IPs, 0.01, 20)
+    # asyncio.run(lr._recv_start())
+    # print("GOT ALL START MESSAGES")
+    # asyncio.run(lr.round())
+    # pred = lr.predict(x_test)
+    # accuracy = accuracy_score(y_test, pred)
+    # print(accuracy)
+    # with open(f"log_{time.time()}.txt", 'w') as f:
+    #     f.write(f"Training Accuracies = {lr.train_accuracies}\n")
+    #     f.write(f"Losses = {lr.losses}")
 
 

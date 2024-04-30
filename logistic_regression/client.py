@@ -8,6 +8,7 @@ import socket
 import sys
 import pickle
 import time
+import hashlib
 import numpy as np
 
 def sklearn_to_df(data_loader):
@@ -20,6 +21,17 @@ def sklearn_to_df(data_loader):
 
     return x, y
 
+def hash_file(file_name):
+    BUF_SIZE = 65536
+    sha1 = hashlib.sha1()
+    with open(file_name, 'rb') as f:
+        print("Calculating Hash")
+        while True:
+            data = f.read(BUF_SIZE)
+            if not data:
+                break
+            sha1.update(data)
+    return sha1.hexdigest()
 
 class FederatedClientLogReg():
 
@@ -39,6 +51,8 @@ class FederatedClientLogReg():
         self.latest_epoch = 0
         self.start_sent = False
         self.end_training = False
+    
+    
 
     def round_send(self):
         while True:
@@ -46,13 +60,14 @@ class FederatedClientLogReg():
             ser_msg, _ = packet
             msg = pickle.loads(ser_msg)
             print("in round_send, got a messsage")
+            trust = hash_file(__file__)
             if msg["type"] == "gradient_request":
                 #send my reply
                 reply = {
                     "type": "gradient",
                     "gradient": self.latest_gradient,
                     "id": self.id,
-                    "trust": "trust",
+                    "trust": trust,
                 }
                 ser_reply = pickle.dumps(reply)
                 self.sock.sendto(ser_reply, self.server_addr)
@@ -84,8 +99,9 @@ class FederatedClientLogReg():
         self.weights = np.zeros(x.shape[1])
         self.bias = 0
         i = 0
-        while not self.end_training:
-            time.sleep(1) # collecting data
+        # while not self.end_training:
+        for i in range(100):
+            # time.sleep(1) # collecting data
             print("Starting New Epoch", i)
 
             x_dot_weights = np.matmul(self.weights, x.transpose()) + self.bias
@@ -102,30 +118,31 @@ class FederatedClientLogReg():
             self.train_accuracies.append(accuracy_score(y, pred_to_class))
             self.losses.append(loss)
 
-            if i == 3:
-                # send startup message
-                msg = {
-                    "type": "start",
-                    "id": self.id
-                }
-                ser_msg = pickle.dumps(msg)
-                self.start_sent = True
-                print("SENDING START TO SERVER")
-                self.sock.sendto(ser_msg, self.server_addr)
+        #     if i == 3:
+        #         # send startup message
+        #         msg = {
+        #             "type": "start",
+        #             "id": self.id
+        #         }
+        #         ser_msg = pickle.dumps(msg)
+        #         self.start_sent = True
+        #         print("SENDING START TO SERVER")
+        #         self.sock.sendto(ser_msg, self.server_addr)
                 
-            if self.start_sent:
-                print("Waiting for a request from server and sending my reply")
-                self.round_send()
-                self.round_global_weights()
-            i+=1
-        msg =  {
-                    "type": "end",
-                    "id": self.id
-                }
+        #     if self.start_sent:
+        #         print("Waiting for a request from server and sending my reply")
+        #         self.round_send()
+        #         # self.round_global_weights()
+        #     i+=1
+        # msg =  {
+        #             "type": "end",
+        #             "id": self.id
+        #         }
         # print("Sending END TO SERVER")
         # ser_msg = pickle.dumps(msg)
         # self.sock.sendto(ser_msg, self.server_addr)
         # self.sock.recvfrom(10000)
+        print(accuracy_score(y, pred_to_class))
         
     def compute_loss(self, y_true, y_pred):
         # binary cross entropy
@@ -164,7 +181,7 @@ class FederatedClientLogReg():
 
     def _transform_x(self, x):
         x = copy.deepcopy(x)
-        return x.values
+        return x
 
     def _transform_y(self, y):
         y = copy.deepcopy(y)
@@ -178,17 +195,20 @@ if __name__ == "__main__":
     no_rows = len(x) // 5
     x = x.iloc[no_rows*(id-1):no_rows*id, :] #split dataset at client
     y = y.iloc[no_rows*(id-1):no_rows*id]
-
+    print(type(x))
     # normalize data
     scaler = STD()
-    x = scaler.fit_transform(x) 
-
+    # x = scaler.fit_transform(x) 
+    x = x.values
+    print(type(x))
     print("split dataset")
     x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.1, random_state=42)
 
     lr = FederatedClientLogReg(('localhost', 8000+id), ('localhost', 8000), id)
     print("Starting Fit")
+    print("length of dataset = ",len(x_train), len(x_test))
     lr.fit(x_train, y_train, epochs=20)
+    # print(lr.train_accuracies[-1])
 
 # lr.fit(x_train, y_train, epochs=150)
 # pred = lr.predict(x_test)
