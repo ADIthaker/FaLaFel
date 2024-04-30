@@ -102,7 +102,7 @@ class FederatedClientLogReg():
         self.bias = 0.1
         i = 0
         # while not self.end_training:
-        for i in range(100):
+        for i in range(150):
             # time.sleep(1) # collecting data
             print("Starting New Epoch", i)
 
@@ -168,9 +168,9 @@ class FederatedClientLogReg():
 
         return gradients_w, gradient_b
 
-    def update_model_parameters(self, error_w, error_b, lr=0.01, beta=0.01):
-        self.weights = self.weights - lr * (error_w + 2*beta*self.weights) 
-        self.bias = self.bias - lr * (error_b + 2*beta*self.bias)
+    def update_model_parameters(self, error_w, error_b, lr=0.00018, beta=0.01):
+        self.weights = self.weights - lr * (error_w ) #+ 2*beta*self.weights
+        self.bias = self.bias - lr * (error_b) #+ 2*beta*self.bias
 
     def predict(self, x):
         x_dot_weights = np.matmul(x, self.weights.transpose()) + self.bias
