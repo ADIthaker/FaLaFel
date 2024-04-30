@@ -1,7 +1,7 @@
 import pandas as pd
 from sklearn.model_selection import train_test_split
 from sklearn.datasets import load_breast_cancer
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
 from sklearn.preprocessing import StandardScaler as STD
 import copy
 import socket
@@ -11,6 +11,7 @@ import time
 import hashlib
 import numpy as np
 from matplotlib import pyplot as plt
+from sklearn.utils import shuffle
 
 def sklearn_to_df(data_loader):
     X_data = data_loader.data
@@ -97,7 +98,7 @@ class FederatedClientLogReg():
         x = self._transform_x(x)
         y = self._transform_y(y)
 
-        self.weights = np.random.rand(x.shape[1])
+        self.weights = np.random.uniform(low=0, high=1, size=x.shape[1])
         self.bias = 0
         i = 0
         # while not self.end_training:
@@ -143,10 +144,14 @@ class FederatedClientLogReg():
         # ser_msg = pickle.dumps(msg)
         # self.sock.sendto(ser_msg, self.server_addr)
         # self.sock.recvfrom(10000)
+            print("ACC", accuracy_score(y, pred_to_class), f1_score(y, pred_to_class))
+            print("PREC-REC", precision_score(y, pred_to_class), recall_score(y, pred_to_class))
+        
         plt.plot(self.losses)
         plt.plot(np.multiply(self.train_accuracies,10))
         plt.show()
         print(accuracy_score(y, pred_to_class))
+
         
     def compute_loss(self, y_true, y_pred):
         # binary cross entropy
@@ -163,7 +168,7 @@ class FederatedClientLogReg():
 
         return gradients_w, gradient_b
 
-    def update_model_parameters(self, error_w, error_b, lr=0.001):
+    def update_model_parameters(self, error_w, error_b, lr=0.0001):
         self.weights = self.weights - lr * error_w
         self.bias = self.bias - lr * error_b
 
@@ -196,14 +201,18 @@ if __name__ == "__main__":
     id = int(args[1])
 
     x, y = sklearn_to_df(load_breast_cancer())
+    x, y = shuffle(x, y, random_state=0)
+    x = pd.DataFrame(x)
+    y = pd.DataFrame(y)
     no_rows = len(x) // 5
-    x = x.iloc[no_rows*(id-1):no_rows*id, :] #split dataset at client
-    y = y.iloc[no_rows*(id-1):no_rows*id]
+    #x = x.iloc[no_rows*(id-1):no_rows*id, :] #split dataset at client
+    #y = y.iloc[no_rows*(id-1):no_rows*id]
     print(type(x))
     # normalize data
     scaler = STD()
-    # x = scaler.fit_transform(x) 
-    x = x.values
+    x = scaler.fit_transform(x)
+    #x = x.values
+    print(type(x))
     print("split dataset")
     x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.1, random_state=42)
 
