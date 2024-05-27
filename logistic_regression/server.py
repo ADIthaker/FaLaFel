@@ -26,7 +26,7 @@ def sklearn_to_df(data_loader):
 x, y = sklearn_to_df(load_breast_cancer())
 
 x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.2, random_state=42)
-
+print(f"sizes train = {len(y_train)} and test = {len(y_test)} ")
 client_IPs = [('localhost', 8001), ('localhost', 8002), ('localhost', 8003), ('localhost', 8004), ('localhost', 8005)]
 
 def hash_file(file_name):
@@ -41,7 +41,8 @@ def hash_file(file_name):
             sha1.update(data)
     return sha1.hexdigest()
 
-
+good_updates =[]
+bad_updates=[]
 class FederatedServerLogReg():
 
     def __init__(self, addr, client_IPs, min_loss, epochs, client_file):
@@ -92,6 +93,7 @@ class FederatedServerLogReg():
         msg = {
             "type": "gradient_request",
             "round": self.rounds,
+            "global_weights": self.weights if self.rounds>0 else None
         }
         ser_msg = pickle.dumps(msg)
         for cl in self.client_IPs:
@@ -114,21 +116,22 @@ class FederatedServerLogReg():
                     self.round_updates[self.rounds].append((0,0))
             elif msg["type"] == "end":
                 self.end[msg['id']-1] = 1
-        print("Gathered all gradients with len: ", len(self.round_updates[self.rounds]),self.round_updates[self.rounds])
+        print("Gathered all gradients with len: ", len(self.round_updates[self.rounds]))
         await self.fit()
         
         return self.rounds
-
+    async def send_global_updates(self):
+        msg = {
+            "type": "global_update",
+            "global_weights": self.weights
+        }
+        ser_msg = pickle.dumps(msg)
+        for cl in self.client_IPs:
+            self.sock.sendto(ser_msg, cl)
     async def fit(self):
 
         while self.latest_epoch < self.max_epochs: #make these epochs count into condition for reaching a min loss value
             time.sleep(0.5) # sleep for 0.5seconds before asking for updates
-            x_dot_weights = np.matmul(self.weights, self.x.transpose()) + self.bias
-            pred = self._sigmoid(x_dot_weights)
-            loss = self.compute_loss(y, pred)
-            self.curr_loss = loss
-            self.latest_epoch += 1
-            print("Epoch comparison: ", self.latest_epoch, self.max_epochs)
             # error_w, error_b = self.compute_gradients(x, y, pred)
 
             #take average of all gradients recieved.
@@ -159,10 +162,23 @@ class FederatedServerLogReg():
 
             self.update_model_parameters(error_w, error_b)
 
+            x_dot_weights = np.matmul(self.weights, self.x.transpose()) + self.bias
+            pred = self._sigmoid(x_dot_weights)
+            loss = self.compute_loss(y, pred)
+            self.curr_loss = loss
+            self.latest_epoch += 1
             pred_to_class = [1 if p > 0.5 else 0 for p in pred]
-            self.train_accuracies.append(accuracy_score(self.y, pred_to_class))
+            round_accuracy = accuracy_score(self.y, pred_to_class)
+            self.train_accuracies.append(round_accuracy)
             self.losses.append(loss)
+
+            if round_accuracy<0.4:
+                bad_updates.append((error_w, error_b))
+            elif round_accuracy>0.5:
+                good_updates.append((error_w, error_b))
+            await self.send_global_updates()
             print(self.losses[-1], self.train_accuracies[-1])
+            print(self.weights)
             self.rounds += 1
             print("Start a new round", self.rounds)
             await self.round()
@@ -221,15 +237,20 @@ class FederatedServerLogReg():
 
 if __name__ == "__main__":
     print(hash_file("client.py"))
-    # lr = FederatedServerLogReg(("localhost", 8000), client_IPs, 0.01, 20)
-    # asyncio.run(lr._recv_start())
-    # print("GOT ALL START MESSAGES")
-    # asyncio.run(lr.round())
-    # pred = lr.predict(x_test)
-    # accuracy = accuracy_score(y_test, pred)
-    # print(accuracy)
-    # with open(f"log_{time.time()}.txt", 'w') as f:
-    #     f.write(f"Training Accuracies = {lr.train_accuracies}\n")
-    #     f.write(f"Losses = {lr.losses}")
+    lr = FederatedServerLogReg(("localhost", 8000), client_IPs, 0.01, 40, "client.py")
+    asyncio.run(lr._recv_start())
+    print("GOT ALL START MESSAGES")
+    start=time.time()
+    asyncio.run(lr.round())
+    print("time taken: ", time.time()-start)
+    pred = lr.predict(x_test)
+    accuracy = accuracy_score(y_test, pred)
+    print(accuracy)
+    with open(f"log_{time.time()}.txt", 'w') as f:
+        f.write(f"Training Accuracies = {lr.train_accuracies}\n")
+        f.write(f"Losses = {lr.losses}")
+    with open(f"updates_{time.time()}.txt", 'w') as f:
+        f.write(f"Good updates = {good_updates}\n")
+        f.write(f"Bad updates = {bad_updates}")
 
 

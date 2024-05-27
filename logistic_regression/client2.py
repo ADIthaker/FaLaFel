@@ -100,52 +100,40 @@ class FederatedClientLogReg():
 
         self.weights = np.random.uniform(low=0, high=1, size=x.shape[1])
         self.bias = 0.1
-        i = 0
-        # while not self.end_training:
-        for i in range(150):
-            # time.sleep(1) # collecting data
-            print("Starting New Epoch", i)
+        # i = 0
+        while not self.end_training:
+            print("Starting New round", self.latest_epoch)
+            time.sleep(1) # collecting data
+            for i in range(50):
 
-            x_dot_weights = np.matmul(self.weights, x.transpose()) + self.bias
-            pred = self._sigmoid(x_dot_weights)
-            loss = self.compute_loss(y, pred)
-            print("local loss = ", loss)
-            error_w, error_b = self.compute_gradients(x, y, pred)
-            self.latest_gradient = (error_w, error_b)
-            self.epoch_gradient[i] = self.latest_gradient
-            self.latest_epoch = i
-            self.update_model_parameters(error_w, error_b)
-
-            pred_to_class = [1 if p > 0.5 else 0 for p in pred]
-            self.train_accuracies.append(accuracy_score(y, pred_to_class))
-            self.losses.append(loss)
-
-        #     if i == 3:
-        #         # send startup message
-        #         msg = {
-        #             "type": "start",
-        #             "id": self.id
-        #         }
-        #         ser_msg = pickle.dumps(msg)
-        #         self.start_sent = True
-        #         print("SENDING START TO SERVER")
-        #         self.sock.sendto(ser_msg, self.server_addr)
+                x_dot_weights = np.matmul(self.weights, x.transpose()) + self.bias
+                pred = self._sigmoid(x_dot_weights)
+                loss = self.compute_loss(y, pred)
+                error_w, error_b = self.compute_gradients(x, y, pred)
+                self.latest_gradient = (error_w, error_b)
+                # self.latest_epoch = i
+                self.update_model_parameters(error_w, error_b)
+                pred_to_class = [1 if p > 0.5 else 0 for p in pred]
+                self.train_accuracies.append(accuracy_score(y, pred_to_class))
+                self.losses.append(loss)
+            self.epoch_gradient[self.latest_epoch] = self.latest_gradient
+            # send startup message
+            msg = {
+                "type": "start",
+                "id": self.id
+            }
+            ser_msg = pickle.dumps(msg)
+            self.start_sent = True
+            print("SENDING START TO SERVER")
+            self.sock.sendto(ser_msg, self.server_addr)
                 
-        #     if self.start_sent:
-        #         print("Waiting for a request from server and sending my reply")
-        #         self.round_send()
-        #         # self.round_global_weights()
-        #     i+=1
-        # msg =  {
-        #             "type": "end",
-        #             "id": self.id
-        #         }
-        # print("Sending END TO SERVER")
-        # ser_msg = pickle.dumps(msg)
-        # self.sock.sendto(ser_msg, self.server_addr)
-        # self.sock.recvfrom(10000)
-            print("ACC", accuracy_score(y, pred_to_class), f1_score(y, pred_to_class))
-            print("PREC-REC", precision_score(y, pred_to_class), recall_score(y, pred_to_class))
+            if self.start_sent:
+                print("Waiting for a request from server and sending my reply")
+                self.round_send()
+                self.round_global_weights()
+
+        print("ACC", accuracy_score(y, pred_to_class), f1_score(y, pred_to_class))
+        print("PREC-REC", precision_score(y, pred_to_class), recall_score(y, pred_to_class))
         
         plt.plot(self.losses)
         plt.plot(np.multiply(self.train_accuracies,10))
