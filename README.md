@@ -1,4 +1,4 @@
-Plan:
+FaLaFel: A (very small scale and restrictive) Federated Learning Framework
 
 install flower
 - Python 3.10 or above is recommended.
