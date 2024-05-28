@@ -1,12 +1,9 @@
 FaLaFel: A (very small scale and restrictive) Federated Learning Framework
 
-install flower
-- Python 3.10 or above is recommended.
-- flwr / flwr[simulation]
-one file for server
-
-one file for client
-
-Start 2 clients
-
-and just do the same things I did for tensorflow federated
+  ![System Architecture](./Distributed_Systems-images-0.jpg)
+  ![System Architecture](./Distributed_Systems-images-1.jpg)
+  ![System Architecture](./Distributed_Systems-images-2.jpg)
+  ![System Architecture](./Distributed_Systems-images-3.jpg)
+  ![System Architecture](./Distributed_Systems-images-4.jpg)
+  
+  
